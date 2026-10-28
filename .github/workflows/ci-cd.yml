@@ -4,14 +4,14 @@ on:
   push:
     branches: [kouki]
   pull_request:
-    branches: [main]
+    branches: [kouki]
 
 concurrency:
   group: ci-cd-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
 
 jobs:
   backend:
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: Frontend-cross-platform
+        working-directory: Frontend-cross-platform/webfront
     steps:
       - uses: actions/checkout@v4
 
@@ -47,7 +47,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: Frontend-cross-platform/package-lock.json
+          cache-dependency-path: Frontend-cross-platform/webfront/package-lock.json
 
       - run: npm ci
       - run: npm run lint --if-present
