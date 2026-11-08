@@ -15,11 +15,32 @@ env:
 
 jobs:
   backend:
-    name: Backend (NestJS) - lint, test, build
+    name: Backend (NestJS) - base de données, lint, test, build
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
+
+    # Base PostgreSQL jetable : créée au début du job, détruite à la fin.
+    # Ces identifiants ne servent qu'ici et sont différents de ceux de ton .env.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: ci_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_user -d ci_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://ci_user:ci_password@localhost:5432/ci_db?schema=public
+
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +51,26 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - run: npm ci
+
+      # --- Base de données (Prisma) ---
+      - name: Prisma - valider le schéma
+        run: npx prisma validate
+
+      - name: Prisma - générer le client
+        run: npx prisma generate
+
+      - name: Prisma - appliquer les migrations sur la base de test
+        run: npx prisma migrate deploy
+
+      - name: Prisma - vérifier que le schéma et les migrations concordent
+        # Échoue si quelqu'un a modifié schema.prisma sans créer de migration
+        run: >-
+          npx prisma migrate diff
+          --from-url "$DATABASE_URL"
+          --to-schema-datamodel prisma/schema.prisma
+          --exit-code
+
+      # --- Code ---
       - run: npm run lint --if-present
       - run: npm test --if-present
       - run: npm run build
@@ -55,5 +96,3 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
-
- 
