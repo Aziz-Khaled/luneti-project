@@ -31,6 +31,37 @@
 $ npm install
 ```
 
+## Authentication and database CRUD
+
+The backend uses a domain-oriented modular monolith. Feature modules expose
+versioned HTTP endpoints, application services implement business rules, and
+Prisma is kept at the persistence boundary. The Prisma schema remains unchanged
+and is the source of truth for database field and model names.
+
+Set `AUTH_JWT_SECRET` to a random secret of at least 32 characters and
+`DATABASE_URL` to the PostgreSQL connection string before starting the API.
+Registration creates an active account because no email-delivery or verification
+flow is configured yet. Passwords are stored as scrypt hashes; access tokens
+expire after 15 minutes.
+
+All API routes use the `/api/v1` prefix. Authentication endpoints:
+
+- `POST /api/v1/auth/register` with `{ "prenom", "nom", "email", "password" }`
+- `POST /api/v1/auth/login` with `{ "email", "password" }`
+- `GET /api/v1/auth/me` requires a bearer token
+
+Implemented modules include users, client and optician profiles, stores and
+memberships, products and variants, and store-scoped inventory. These use
+domain-specific authorization and workflows instead of generic table CRUD.
+See `API_ENTITY_COVERAGE.md` for the status and management path of each Prisma
+model. Refresh/logout, email verification, password recovery, payments, and
+external AI/storage integrations are not enabled because the required schema
+or provider configuration is absent.
+
+Interactive API documentation is served at `http://localhost:3000/api/docs`
+when the backend is running. Use the **Authorize** button with a bearer access
+token to test the protected domain routes.
+
 ## Compile and run the project
 
 ```bash
