@@ -1,0 +1,181 @@
+
+name: Lunetty DevSecOps Pipeline
+
+on:
+  push:
+    branches:
+      - kouki
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    name: Security Analysis
+    runs-on: [self-hosted, Windows, X64, lunetty]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Docker
+        shell: pwsh
+        run: |
+          docker version
+          docker info
+
+      - name: Create reports directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force reports
+
+      # SEMGREP - SAST
+      - name: Semgrep scan
+        shell: pwsh
+        run: |
+          docker run --rm `
+            --mount "type=bind,source=$env:GITHUB_WORKSPACE,target=/src" `
+            -w /src `
+            semgrep/semgrep:1.182.1 `
+            semgrep scan --config auto --json `
+            --output reports/semgrep-report.json
+
+      # TRIVY - FILESYSTEM
+      - name: Trivy filesystem scan
+        shell: pwsh
+        run: |
+          docker run --rm `
+            --mount "type=bind,source=$env:GITHUB_WORKSPACE,target=/project" `
+            --mount "type=volume,source=trivy-cache,target=/root/.cache" `
+            aquasec/trivy:0.76.2 `
+            fs `
+            --scanners vuln,secret,misconfig `
+            --skip-dirs defectdojo `
+            --skip-dirs node_modules `
+            --skip-dirs .next `
+            --skip-dirs .git `
+            --skip-dirs reports `
+            --timeout 15m `
+            --format json `
+            --output /project/reports/trivy-filesystem.json `
+            /project
+
+      # BUILD BACKEND
+      - name: Build backend image
+        shell: pwsh
+        run: |
+          docker build `
+            -t lunetty-backend:${{ github.sha }} `
+            ./backend
+
+      # BUILD FRONTEND
+      - name: Build frontend image
+        shell: pwsh
+        run: |
+          docker build `
+            -t lunetty-frontend:${{ github.sha }} `
+            ./Frontend-cross-platform/webfront
+
+      # EXPORT BACKEND IMAGE
+      - name: Export backend image
+        shell: pwsh
+        run: |
+          docker save `
+            -o reports/trivy-backend-image.tar `
+            lunetty-backend:${{ github.sha }}
+
+      # EXPORT FRONTEND IMAGE
+      - name: Export frontend image
+        shell: pwsh
+        run: |
+          docker save `
+            -o reports/trivy-frontend-image.tar `
+            lunetty-frontend:${{ github.sha }}
+
+      # TRIVY - BACKEND IMAGE
+      - name: Trivy backend image scan
+        shell: pwsh
+        run: |
+          docker run --rm `
+            --mount "type=bind,source=$env:GITHUB_WORKSPACE,target=/project" `
+            --mount "type=volume,source=trivy-cache,target=/root/.cache" `
+            aquasec/trivy:0.76.2 `
+            image --input /project/reports/trivy-backend-image.tar `
+            --format json `
+            --output /project/reports/trivy-backend.json
+
+      # TRIVY - FRONTEND IMAGE
+      - name: Trivy frontend image scan
+        shell: pwsh
+        run: |
+          docker run --rm `
+            --mount "type=bind,source=$env:GITHUB_WORKSPACE,target=/project" `
+            --mount "type=volume,source=trivy-cache,target=/root/.cache" `
+            aquasec/trivy:0.76.2 `
+            image --input /project/reports/trivy-frontend-image.tar `
+            --format json `
+            --output /project/reports/trivy-frontend.json
+
+      # IMPORT SEMGREP
+      - name: Import Semgrep into DefectDojo
+        uses: DefectDojo/defectdojo-action@v1
+        with:
+          defectdojo-url: ${{ vars.DEFECTDOJO_URL }}
+          api-token: ${{ secrets.DEFECTDOJO_API_TOKEN }}
+          file: reports/semgrep-report.json
+          scan-type: Semgrep JSON Report
+          product-type-name: Lunetty
+          product-name: Lunetty Application
+          engagement-name: Lunetty Security Scans
+          test-title: Semgrep SAST
+
+      # IMPORT TRIVY FILESYSTEM
+      - name: Import Trivy filesystem into DefectDojo
+        uses: DefectDojo/defectdojo-action@v1
+        with:
+          defectdojo-url: ${{ vars.DEFECTDOJO_URL }}
+          api-token: ${{ secrets.DEFECTDOJO_API_TOKEN }}
+          file: reports/trivy-filesystem.json
+          scan-type: Trivy Scan
+          product-type-name: Lunetty
+          product-name: Lunetty Application
+          engagement-name: Lunetty Security Scans
+          test-title: Trivy Filesystem
+
+      # IMPORT TRIVY BACKEND
+      - name: Import Trivy backend into DefectDojo
+        uses: DefectDojo/defectdojo-action@v1
+        with:
+          defectdojo-url: ${{ vars.DEFECTDOJO_URL }}
+          api-token: ${{ secrets.DEFECTDOJO_API_TOKEN }}
+          file: reports/trivy-backend.json
+          scan-type: Trivy Scan
+          product-type-name: Lunetty
+          product-name: Lunetty Application
+          engagement-name: Lunetty Security Scans
+          test-title: Trivy Backend Image
+
+      # IMPORT TRIVY FRONTEND
+      - name: Import Trivy frontend into DefectDojo
+        uses: DefectDojo/defectdojo-action@v1
+        with:
+          defectdojo-url: ${{ vars.DEFECTDOJO_URL }}
+          api-token: ${{ secrets.DEFECTDOJO_API_TOKEN }}
+          file: reports/trivy-frontend.json
+          scan-type: Trivy Scan
+          product-type-name: Lunetty
+          product-name: Lunetty Application
+          engagement-name: Lunetty Security Scans
+          test-title: Trivy Frontend Image
+
+      # SAVE REPORTS
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunetty-security-reports
+          path: reports/*.json
+          if-no-files-found: warn
+          retention-days: 14
