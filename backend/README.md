@@ -44,6 +44,11 @@ Registration creates an active account because no email-delivery or verification
 flow is configured yet. Passwords are stored as scrypt hashes; access tokens
 expire after 15 minutes.
 
+Docker Compose does not apply database migrations during API startup. The
+current database/schema diff and migration history require manual review before
+any migration is generated or applied; do not run `prisma migrate deploy`,
+`prisma db push`, or a reset as a startup shortcut.
+
 All API routes use the `/api/v1` prefix. Authentication endpoints:
 
 - `POST /api/v1/auth/register` with `{ "prenom", "nom", "email", "password" }`
