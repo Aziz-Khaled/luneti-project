@@ -10,8 +10,9 @@ services:
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Définir AUTH_JWT_SECRET dans .env}
       # L'URL est construite à partir du .env : rien n'est écrit en dur ici
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
-    # Génère le client Prisma, applique les migrations existantes, puis lance Nest
-    command: sh -c "npx prisma generate && npx prisma migrate deploy && npm run start:dev"
+    # Generate the client and start Nest; database migrations are deliberately
+    # managed separately after the existing database/schema drift is reviewed.
+    command: sh -c "npx prisma generate && npm run start:dev"
     ports:
       - "3000:3000"
     volumes:

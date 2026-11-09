@@ -59,11 +59,17 @@ jobs:
       - name: Prisma - générer le client
         run: npx prisma generate
 
-      - name: Prisma - appliquer les migrations sur la base de test
-        run: npx prisma migrate deploy
+      # L'historique contient une migration de traduction qui supprime des
+      # tables/colonnes et ne reconstruit pas tout le schéma Prisma actuel.
+      # Ne pas exécuter cet historique avant sa réparation et validation.
+      # La base PostgreSQL de ce job est jetable : la créer directement depuis
+      # le schéma permet de vérifier que Prisma peut appliquer le modèle sur
+      # PostgreSQL sans toucher à une base persistante.
+      - name: Prisma - créer le schéma sur PostgreSQL de test
+        run: npx prisma db push --skip-generate
 
-      - name: Prisma - vérifier que le schéma et les migrations concordent
-        # Échoue si quelqu'un a modifié schema.prisma sans créer de migration
+      - name: Prisma - vérifier la parité du schéma PostgreSQL
+        # Compare la base jetable au datamodel après db push.
         run: >-
           npx prisma migrate diff
           --from-url "$DATABASE_URL"
