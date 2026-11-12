@@ -19,6 +19,7 @@ const userSelect = {
   telephone: true,
   url_image_profil: true,
   statut: true,
+  doit_changer_mot_de_passe: true,
   langue_preferee: true,
   cree_le: true,
   modifie_le: true,
@@ -58,13 +59,18 @@ export class AuthService {
         },
         select: userSelect,
       });
-      return { user, accessToken: this.tokens.issue({ id: user.id, role: user.role }) };
+      return {
+        user,
+        accessToken: this.tokens.issue({ id: user.id, role: user.role }),
+      };
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('An account already exists for that email or username');
+        throw new ConflictException(
+          'An account already exists for that email or username',
+        );
       }
       throw error;
     }
@@ -98,6 +104,51 @@ export class AuthService {
       user: await this.getSafeUser(user.id),
       accessToken: this.tokens.issue({ id: user.id, role: user.role }),
     };
+  }
+
+  async changePassword(id: string, input: unknown) {
+    if (!isRecord(input)) {
+      throw new BadRequestException('A JSON object is required');
+    }
+    const currentPassword = requiredString(
+      input.currentPassword,
+      'currentPassword',
+      1024,
+    );
+    const newPassword = requiredString(input.newPassword, 'newPassword', 1024);
+    if (newPassword.length < 12) {
+      throw new BadRequestException('Password must be at least 12 characters');
+    }
+
+    const user = await this.prisma.utilisateur.findFirst({
+      where: { id, supprime_le: null, statut: StatutUtilisateur.ACTIVE },
+      select: { empreinte_mot_de_passe: true },
+    });
+    if (
+      !user ||
+      !(await this.passwordHasher.verify(
+        currentPassword,
+        user.empreinte_mot_de_passe,
+      ))
+    ) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    if (
+      await this.passwordHasher.verify(newPassword, user.empreinte_mot_de_passe)
+    ) {
+      throw new BadRequestException(
+        'New password must be different from the temporary password',
+      );
+    }
+
+    await this.prisma.utilisateur.update({
+      where: { id },
+      data: {
+        empreinte_mot_de_passe: await this.passwordHasher.hash(newPassword),
+        doit_changer_mot_de_passe: false,
+      },
+    });
+    return this.getSafeUser(id);
   }
 
   async getSafeUser(id: string) {
@@ -135,7 +186,9 @@ export class AuthService {
       }
     }
     if (Object.keys(data).length === 0) {
-      throw new BadRequestException('No supported profile fields were provided');
+      throw new BadRequestException(
+        'No supported profile fields were provided',
+      );
     }
 
     try {

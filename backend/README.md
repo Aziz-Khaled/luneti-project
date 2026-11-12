@@ -40,6 +40,10 @@ and is the source of truth for database field and model names.
 
 Set `AUTH_JWT_SECRET` to a random secret of at least 32 characters and
 `DATABASE_URL` to the PostgreSQL connection string before starting the API.
+Frame-reference photo scanning also requires `GROQ_API_KEY` in the backend
+environment. `GROQ_VISION_MODEL` is optional and defaults to
+`qwen/qwen3.8-27b`; keep the API key on the server and never expose it through
+a `NEXT_PUBLIC_*` variable.
 Registration creates an active account because no email-delivery or verification
 flow is configured yet. Passwords are stored as scrypt hashes; access tokens
 expire after 15 minutes.
@@ -54,14 +58,20 @@ All API routes use the `/api/v1` prefix. Authentication endpoints:
 - `POST /api/v1/auth/register` with `{ "prenom", "nom", "email", "password" }`
 - `POST /api/v1/auth/login` with `{ "email", "password" }`
 - `GET /api/v1/auth/me` requires a bearer token
+- `POST /api/v1/auth/change-password` requires the current and new password.
+  Employee accounts created by a store owner must change their temporary
+  password before accessing other authenticated endpoints.
 
 Implemented modules include users, client and optician profiles, stores and
 memberships, products and variants, and store-scoped inventory. These use
 domain-specific authorization and workflows instead of generic table CRUD.
+Authorized opticians can scan a frame inscription using
+`POST /api/v1/stores/{storeId}/inventory/scan-reference` with an `image`
+multipart field; the recognized inscription is returned for the stock form.
 See `API_ENTITY_COVERAGE.md` for the status and management path of each Prisma
 model. Refresh/logout, email verification, password recovery, payments, and
-external AI/storage integrations are not enabled because the required schema
-or provider configuration is absent.
+other external AI/storage integrations are not enabled because their required
+schema or provider configuration is absent.
 
 Interactive API documentation is served at `http://localhost:3000/api/docs`
 when the backend is running. Use the **Authorize** button with a bearer access

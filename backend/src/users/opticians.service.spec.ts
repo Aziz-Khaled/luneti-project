@@ -12,7 +12,7 @@ describe('OpticiansService', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('requires an active optician membership before creating a profile', async () => {
+  it('requires an active owner or optician membership before creating a profile', async () => {
     prisma.membreMagasin.findFirst.mockResolvedValue(null);
 
     await expect(
@@ -22,12 +22,30 @@ describe('OpticiansService', () => {
       expect.objectContaining({
         where: {
           utilisateur_id: 'user-id',
-          role: RoleMembre.OPTICIEN,
+          role: { in: [RoleMembre.PROPRIETAIRE, RoleMembre.OPTICIEN] },
           statut: StatutAdhesion.ACTIVE,
         },
       }),
     );
     expect(prisma.profilOpticien.upsert).not.toHaveBeenCalled();
+  });
+
+  it('allows an active store owner to update their optician profile', async () => {
+    prisma.membreMagasin.findFirst.mockResolvedValue({ id: 'membership-id' });
+    prisma.profilOpticien.upsert.mockResolvedValue({ utilisateur_id: 'user-id' });
+
+    await service.updateMe('user-id', { titre_professionnel: 'Optician' });
+
+    expect(prisma.membreMagasin.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          utilisateur_id: 'user-id',
+          role: { in: [RoleMembre.PROPRIETAIRE, RoleMembre.OPTICIEN] },
+          statut: StatutAdhesion.ACTIVE,
+        },
+      }),
+    );
+    expect(prisma.profilOpticien.upsert).toHaveBeenCalled();
   });
 
   it('upserts only the authenticated optician profile', async () => {

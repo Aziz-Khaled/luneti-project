@@ -14,7 +14,7 @@ An active membership in one store never grants access to another store.
 | Create a store | No | Yes (becomes owner) | Yes (becomes owner) | Yes (becomes owner) | Yes (becomes owner) | Yes (new store) | Yes | Yes |
 | Update store profile | No | No | No | No | Active membership | Active membership | Not implicitly granted | Not implicitly granted |
 | Archive store | No | No | No | No | No | Active membership | Not implicitly granted | Not implicitly granted |
-| Invite store member | No | No | No | No | Active membership; cannot grant manager/owner | Active membership | Not implicitly granted | Not implicitly granted |
+| Create employee account | No | No | No | No | No | Active membership; per-employee permissions | Not implicitly granted | Not implicitly granted |
 | Change membership role/status | No | Accept own invite only | No | No | No | Store membership administration | Not implicitly granted | Not implicitly granted |
 | Read/write store inventory | No | No | No | Active membership | Active membership | Active membership | Not implicitly granted | Not implicitly granted |
 | Manage store inventory locations | No | No | No | No | Active membership | Active membership | Not implicitly granted | Not implicitly granted |

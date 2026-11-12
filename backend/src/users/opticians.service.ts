@@ -70,7 +70,7 @@ export class OpticiansService {
     const membership = await this.prisma.membreMagasin.findFirst({
       where: {
         utilisateur_id: userId,
-        role: RoleMembre.OPTICIEN,
+        role: { in: [RoleMembre.PROPRIETAIRE, RoleMembre.OPTICIEN] },
         statut: StatutAdhesion.ACTIVE,
       },
       select: { id: true },

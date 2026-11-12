@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -7,10 +8,15 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
+  ApiBody,
   ApiBearerAuth,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -23,6 +29,10 @@ import { CreateStockDto } from './dto/create-stock.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { UpdateStockDto } from './dto/update-stock.dto';
 import { InventoryService } from './inventory.service';
+import {
+  ReferenceScanService,
+  ReferenceScanUpload,
+} from './reference-scan.service';
 
 @Controller('stores/:storeId/inventory')
 @UseGuards(JwtAuthGuard)
@@ -30,10 +40,15 @@ import { InventoryService } from './inventory.service';
 @ApiBearerAuth()
 @ApiParam({ name: 'storeId', format: 'uuid' })
 export class InventoryController {
-  constructor(private readonly inventory: InventoryService) {}
+  constructor(
+    private readonly inventory: InventoryService,
+    private readonly referenceScan: ReferenceScanService,
+  ) {}
 
   @Get()
-  @ApiOperation({ summary: 'List inventory for a store you are authorized to manage' })
+  @ApiOperation({
+    summary: 'List inventory for a store you are authorized to manage',
+  })
   list(
     @CurrentUser() user: AuthenticatedRequest['user'],
     @Param('storeId', ParseUUIDPipe) storeId: string,
@@ -43,13 +58,62 @@ export class InventoryController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a stock record for a store listing and location' })
+  @ApiOperation({
+    summary: 'Create an optical stock item for an active store location',
+  })
   create(
     @CurrentUser() user: AuthenticatedRequest['user'],
     @Param('storeId', ParseUUIDPipe) storeId: string,
     @Body() input: CreateStockDto,
   ) {
     return this.inventory.create(user.id, storeId, input);
+  }
+
+  @Post('scan-reference')
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: 16 * 1024 * 1024 },
+      fileFilter: (_request, file, callback) => {
+        const allowedTypes = [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'image/avif',
+        ];
+        if (!allowedTypes.includes(file.mimetype)) {
+          callback(
+            new BadRequestException(
+              'Choisissez une photo au format JPEG, PNG, WebP ou AVIF.',
+            ),
+            false,
+          );
+          return;
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { image: { type: 'string', format: 'binary' } },
+      required: ['image'],
+    },
+  })
+  @ApiOperation({
+    summary: 'Read an eyeglass frame reference from a photo',
+  })
+  async scanReference(
+    @CurrentUser() user: AuthenticatedRequest['user'],
+    @Param('storeId', ParseUUIDPipe) storeId: string,
+    @UploadedFile() file: ReferenceScanUpload | undefined,
+  ) {
+    await this.inventory.authorizeReferenceScan(user.id, storeId);
+    if (!file) {
+      throw new BadRequestException('Aucune photo reçue.');
+    }
+    return this.referenceScan.scan(file);
   }
 
   @Get(':stockId')

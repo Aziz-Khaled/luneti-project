@@ -1,6 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TypeEmplacementStock } from '@prisma/client';
-import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateStoreLocationDto {
   @ApiProperty({ maxLength: 120 })
@@ -18,6 +25,11 @@ export class CreateStoreLocationDto {
   @IsOptional()
   @IsEnum(TypeEmplacementStock)
   type?: TypeEmplacementStock;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  type_personnalise_id?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -4,11 +4,20 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RoleMembre } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StoreAuthorizationService } from '../common/guards/store-authorization.service';
 import { CreateStoreLocationDto } from './dto/create-store-location.dto';
+import { CreateStoreLocationTypeDto } from './dto/create-store-location-type.dto';
 import { UpdateStoreLocationDto } from './dto/update-store-location.dto';
+import { UpdateStoreLocationTypeDto } from './dto/update-store-location-type.dto';
+
+const locationTypeSelect = {
+  id: true,
+  magasin_id: true,
+  nom: true,
+  est_actif: true,
+} satisfies Prisma.TypeEmplacementMagasinSelect;
 
 const locationSelect = {
   id: true,
@@ -16,6 +25,8 @@ const locationSelect = {
   nom: true,
   code: true,
   type: true,
+  type_personnalise_id: true,
+  type_personnalise: { select: { id: true, nom: true, est_actif: true } },
   est_par_defaut: true,
   est_actif: true,
 } satisfies Prisma.EmplacementMagasinSelect;
@@ -28,16 +39,119 @@ export class StoreLocationsService {
   ) {}
 
   async list(userId: string, storeId: string) {
-    await this.authorize(userId, storeId);
+    await this.storeAuthorization.requirePermission(
+      userId,
+      storeId,
+      'inventory.view',
+    );
     return this.prisma.emplacementMagasin.findMany({
-      where: { magasin_id: storeId },
+      where: { magasin_id: storeId, est_actif: true },
       select: locationSelect,
       orderBy: [{ est_par_defaut: 'desc' }, { nom: 'asc' }],
     });
   }
 
+  async listTypes(userId: string, storeId: string) {
+    await this.storeAuthorization.requirePermission(
+      userId,
+      storeId,
+      'inventory.view',
+    );
+    return this.prisma.typeEmplacementMagasin.findMany({
+      where: { magasin_id: storeId },
+      select: locationTypeSelect,
+      orderBy: { nom: 'asc' },
+    });
+  }
+
+  async createType(
+    userId: string,
+    storeId: string,
+    input: CreateStoreLocationTypeDto,
+  ) {
+    await this.storeAuthorization.requirePermission(
+      userId,
+      storeId,
+      'inventory.manage_locations',
+    );
+    const nom = input.nom.trim();
+    if (!nom) throw new BadRequestException('Le nom du type est obligatoire.');
+    try {
+      return await this.prisma.typeEmplacementMagasin.create({
+        data: { magasin_id: storeId, nom },
+        select: locationTypeSelect,
+      });
+    } catch (error) {
+      if (isUniqueConflict(error)) {
+        throw new ConflictException('Ce type existe déjà pour cette boutique.');
+      }
+      throw error;
+    }
+  }
+
+  async updateType(
+    userId: string,
+    storeId: string,
+    typeId: string,
+    input: UpdateStoreLocationTypeDto,
+  ) {
+    await this.storeAuthorization.requirePermission(
+      userId,
+      storeId,
+      'inventory.manage_locations',
+    );
+    if (Object.keys(input).length === 0) {
+      throw new BadRequestException(
+        'Au moins un champ du type doit être renseigné.',
+      );
+    }
+    const data: Prisma.TypeEmplacementMagasinUpdateManyMutationInput = {
+      ...(input.nom !== undefined ? { nom: input.nom.trim() } : {}),
+      ...(input.est_actif !== undefined ? { est_actif: input.est_actif } : {}),
+    };
+    if (input.nom !== undefined && !input.nom.trim()) {
+      throw new BadRequestException('Le nom du type est obligatoire.');
+    }
+    try {
+      const updated = await this.prisma.typeEmplacementMagasin.updateMany({
+        where: { id: typeId, magasin_id: storeId },
+        data,
+      });
+      if (updated.count === 0) {
+        throw new NotFoundException('Type d’emplacement introuvable.');
+      }
+      return this.prisma.typeEmplacementMagasin.findUniqueOrThrow({
+        where: { id: typeId },
+        select: locationTypeSelect,
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      if (isUniqueConflict(error)) {
+        throw new ConflictException('Ce type existe déjà pour cette boutique.');
+      }
+      throw error;
+    }
+  }
+
   async create(userId: string, storeId: string, input: CreateStoreLocationDto) {
-    await this.authorize(userId, storeId);
+    await this.storeAuthorization.requirePermission(
+      userId,
+      storeId,
+      'inventory.manage_locations',
+    );
+    await this.assertLocationType(storeId, input.type_personnalise_id);
+    const locationData = {
+      magasin_id: storeId,
+      nom: input.nom,
+      ...(input.code !== undefined ? { code: input.code } : {}),
+      ...(input.type !== undefined ? { type: input.type } : {}),
+      ...(input.type_personnalise_id !== undefined
+        ? { type_personnalise_id: input.type_personnalise_id }
+        : {}),
+      ...(input.est_par_defaut !== undefined
+        ? { est_par_defaut: input.est_par_defaut }
+        : {}),
+    };
     try {
       if (input.est_par_defaut) {
         return await this.prisma.$transaction(async (tx) => {
@@ -46,34 +160,20 @@ export class StoreLocationsService {
             data: { est_par_defaut: false },
           });
           return tx.emplacementMagasin.create({
-            data: {
-              magasin_id: storeId,
-              nom: input.nom,
-              ...(input.code !== undefined ? { code: input.code } : {}),
-              ...(input.type !== undefined ? { type: input.type } : {}),
-              ...(input.est_par_defaut !== undefined
-                ? { est_par_defaut: input.est_par_defaut }
-                : {}),
-            },
+            data: locationData,
             select: locationSelect,
           });
         });
       }
       return await this.prisma.emplacementMagasin.create({
-        data: {
-          magasin_id: storeId,
-          nom: input.nom,
-          ...(input.code !== undefined ? { code: input.code } : {}),
-          ...(input.type !== undefined ? { type: input.type } : {}),
-          ...(input.est_par_defaut !== undefined
-            ? { est_par_defaut: input.est_par_defaut }
-            : {}),
-        },
+        data: locationData,
         select: locationSelect,
       });
     } catch (error) {
       if (isUniqueConflict(error)) {
-        throw new ConflictException('Location code is already used in this store');
+        throw new ConflictException(
+          'Ce code d’emplacement est déjà utilisé dans cette boutique.',
+        );
       }
       throw error;
     }
@@ -85,14 +185,24 @@ export class StoreLocationsService {
     locationId: string,
     input: UpdateStoreLocationDto,
   ) {
-    await this.authorize(userId, storeId);
+    await this.storeAuthorization.requirePermission(
+      userId,
+      storeId,
+      'inventory.manage_locations',
+    );
     if (Object.keys(input).length === 0) {
-      throw new BadRequestException('At least one location field is required');
+      throw new BadRequestException(
+        'Au moins un champ de l’emplacement doit être renseigné.',
+      );
     }
+    await this.assertLocationType(storeId, input.type_personnalise_id);
     const data: Prisma.EmplacementMagasinUpdateManyMutationInput = {
       ...(input.nom !== undefined ? { nom: input.nom } : {}),
       ...(input.code !== undefined ? { code: input.code } : {}),
       ...(input.type !== undefined ? { type: input.type } : {}),
+      ...(input.type_personnalise_id !== undefined
+        ? { type_personnalise_id: input.type_personnalise_id }
+        : {}),
       ...(input.est_par_defaut !== undefined
         ? { est_par_defaut: input.est_par_defaut }
         : {}),
@@ -107,7 +217,7 @@ export class StoreLocationsService {
             select: { id: true },
           });
           if (!current) {
-            throw new NotFoundException('Store location not found');
+            throw new NotFoundException('Emplacement introuvable.');
           }
           await tx.emplacementMagasin.updateMany({
             where: { magasin_id: storeId, est_par_defaut: true },
@@ -126,7 +236,7 @@ export class StoreLocationsService {
         data,
       });
       if (updated.count === 0) {
-        throw new NotFoundException('Store location not found');
+        throw new NotFoundException('Emplacement introuvable.');
       }
       return this.prisma.emplacementMagasin.findUniqueOrThrow({
         where: { id: locationId },
@@ -134,17 +244,25 @@ export class StoreLocationsService {
       });
     } catch (error) {
       if (isUniqueConflict(error)) {
-        throw new ConflictException('Location code is already used in this store');
+        throw new ConflictException(
+          'Ce code d’emplacement est déjà utilisé dans cette boutique.',
+        );
       }
       throw error;
     }
   }
 
-  private authorize(userId: string, storeId: string) {
-    return this.storeAuthorization.requireMembership(userId, storeId, [
-      RoleMembre.PROPRIETAIRE,
-      RoleMembre.GERANT,
-    ]);
+  private async assertLocationType(storeId: string, typeId?: string | null) {
+    if (typeId === undefined || typeId === null) return;
+    const type = await this.prisma.typeEmplacementMagasin.findFirst({
+      where: { id: typeId, magasin_id: storeId, est_actif: true },
+      select: { id: true },
+    });
+    if (!type) {
+      throw new BadRequestException(
+        'Le type sélectionné est indisponible pour cette boutique.',
+      );
+    }
   }
 }
 

@@ -5,13 +5,26 @@ import { CustomersService } from './customers.service';
 describe('CustomersService', () => {
   const prisma = {
     profilClient: {
-      findUnique: jest.fn(),
       upsert: jest.fn(),
     },
   };
   const service = new CustomersService(prisma as unknown as PrismaService);
 
   beforeEach(() => jest.clearAllMocks());
+
+  it('creates a default client profile the first time it is read', async () => {
+    prisma.profilClient.upsert.mockResolvedValue({ utilisateur_id: 'user-id' });
+
+    await service.findMe('user-id');
+
+    expect(prisma.profilClient.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { utilisateur_id: 'user-id' },
+        create: { utilisateur: { connect: { id: 'user-id' } } },
+        update: {},
+      }),
+    );
+  });
 
   it('updates only the authenticated user profile', async () => {
     prisma.profilClient.upsert.mockResolvedValue({ utilisateur_id: 'user-id' });

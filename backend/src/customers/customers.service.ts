@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateClientProfileDto } from './dto/update-client-profile.dto';
@@ -17,14 +17,12 @@ export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findMe(userId: string) {
-    const profile = await this.prisma.profilClient.findUnique({
+    return this.prisma.profilClient.upsert({
       where: { utilisateur_id: userId },
+      create: { utilisateur: { connect: { id: userId } } },
+      update: {},
       select: profileSelect,
     });
-    if (!profile) {
-      throw new NotFoundException('Client profile not found');
-    }
-    return profile;
   }
 
   updateMe(userId: string, input: UpdateClientProfileDto) {

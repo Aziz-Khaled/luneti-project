@@ -18,6 +18,11 @@ import { StoresModule } from './stores/stores.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
+import { AppointmentsModule } from './appointments/appointments.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { AdminModule } from './admin/admin.module';
+import { VirtualTryOnModule } from './virtual-try-on/virtual-try-on.module';
+import { AuditModule } from './audit/audit.module';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -46,6 +51,11 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     UsersModule,
     AuthModule,
     CommonModule,
+    AppointmentsModule,
+    ReviewsModule,
+    AdminModule,
+    VirtualTryOnModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

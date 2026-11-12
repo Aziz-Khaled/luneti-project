@@ -1,12 +1,17 @@
-import { Body, Controller, Delete, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { AuthenticatedRequest } from './auth.types';
+import { AllowInitialPasswordChange } from './allow-initial-password-change.decorator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -55,9 +60,29 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @ApiBearerAuth()
+  @AllowInitialPasswordChange()
   @ApiOperation({ summary: 'Get the authenticated profile' })
   getProfile(@Req() request: AuthenticatedRequest) {
     return this.authService.getSafeUser(request.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  @ApiBearerAuth()
+  @AllowInitialPasswordChange()
+  @ApiOperation({ summary: 'Change a temporary password' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['currentPassword', 'newPassword'],
+      properties: {
+        currentPassword: { type: 'string' },
+        newPassword: { type: 'string', minLength: 12 },
+      },
+    },
+  })
+  changePassword(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.authService.changePassword(request.user.id, body);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -77,10 +102,7 @@ export class AuthController {
       },
     },
   })
-  updateProfile(
-    @Req() request: AuthenticatedRequest,
-    @Body() body: unknown,
-  ) {
+  updateProfile(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.authService.updateProfile(request.user.id, body);
   }
 
